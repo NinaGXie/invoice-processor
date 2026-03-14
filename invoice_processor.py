@@ -81,20 +81,22 @@ def extract_invoice_data(text, filename):
     # Extract amount (Chinese and English patterns)
     # Prioritize 价税合计 (tax-inclusive total)
     amount_patterns = [
+        # Flight itinerary 合计 (last CNY amount on the tax line)
+        r'CNY\s+(\d+(?:\.\d{2})?)\s*$',
         # Chinese patterns - prioritize 价税合计
-        r'价税合计[\s:：]*[¥￥]?\s*(\d+(?:,\d{3})*(?:\.\d{2})?)',  # 价税合计: ¥1234.56
-        r'价税合计.*?[¥￥]?\s*(\d+(?:,\d{3})*(?:\.\d{2})?)',  # 价税合计 1234.56
-        r'(?:合计金额|总金额)[\s:：]*[¥￥]?\s*(\d+(?:,\d{3})*(?:\.\d{2})?)',  # 合计金额: ¥1234.56
-        r'(?:小写|金额)[\s:：]*[¥￥]?\s*(\d+(?:,\d{3})*(?:\.\d{2})?)',  # 小写: ¥1234.56
-        r'[¥￥]\s*(\d+(?:,\d{3})*(?:\.\d{2})?)',  # ¥1,234.56
+        r'价税合计[\s:：]*[¥￥]?\s*(\d+(?:,\d{3})*(?:\.\d{2})?)',
+        r'价税合计.*?[¥￥]?\s*(\d+(?:,\d{3})*(?:\.\d{2})?)',
+        r'(?:合计金额|总金额)[\s:：]*[¥￥]?\s*(\d+(?:,\d{3})*(?:\.\d{2})?)',
+        r'(?:小写|金额)[\s:：]*[¥￥]?\s*(\d+(?:,\d{3})*(?:\.\d{2})?)',
+        r'[¥￥]\s*(\d+(?:,\d{3})*(?:\.\d{2})?)',
         # English patterns
-        r'(?:Total|Amount|Sum)[\s:]*\$?\s*(\d+(?:,\d{3})*(?:\.\d{2})?)',  # Total: $1234.56
-        r'\$\s*(\d+(?:,\d{3})*(?:\.\d{2})?)',  # $1,234.56
-        r'(\d+(?:,\d{3})*(?:\.\d{2})?)\s*(?:USD|EUR|GBP|CNY|RMB)',  # 1234.56 USD
+        r'(?:Total|Amount|Sum)[\s:]*\$?\s*(\d+(?:,\d{3})*(?:\.\d{2})?)',
+        r'\$\s*(\d+(?:,\d{3})*(?:\.\d{2})?)',
+        r'(\d+(?:,\d{3})*(?:\.\d{2})?)\s*(?:USD|EUR|GBP|CNY|RMB)',
     ]
 
     for pattern in amount_patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
+        match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
         if match:
             amount = match.group(1).replace(',', '')
             # Filter out unreasonably small amounts (likely not the total)
@@ -158,7 +160,9 @@ def extract_invoice_data(text, filename):
 
     # Extract route for train/flight tickets (departure -> arrival)
     route_patterns = [
-        # Train ticket: 北京南 G27 苏州北 (station, train number, station)
+        # Flight itinerary: 自:上海 虹桥 国航 CA1524 ... \n至:北京 首都
+        r'自[:：]\s*([\u4e00-\u9fa5]+\s*[\u4e00-\u9fa5]*)[^\n]*\n至[:：]\s*([\u4e00-\u9fa5]+\s*[\u4e00-\u9fa5]*)',
+        # Train ticket: 北京南 G27 苏州北
         r'([\u4e00-\u9fa5]{2,6})\s+[GDCKZTgdckzt]\d+\s+([\u4e00-\u9fa5]{2,6})\s*站',
         r'([\u4e00-\u9fa5]{2,6})\s+[GDCKZTgdckzt]\d+\s+([\u4e00-\u9fa5]{2,6})',
         # Flight: 上海(SHA) 北京(PEK)
@@ -167,10 +171,10 @@ def extract_invoice_data(text, filename):
         r'([\u4e00-\u9fa5]{2,6})\s*[-→至到]\s*([\u4e00-\u9fa5]{2,6})',
     ]
     for pattern in route_patterns:
-        match = re.search(pattern, text)
+        match = re.search(pattern, text, re.DOTALL)
         if match:
-            dep = match.group(1).strip()
-            arr = match.group(2).strip()
+            dep = match.group(1).strip().replace(' ', '')
+            arr = match.group(2).strip().replace(' ', '')
             if len(dep) >= 2 and len(arr) >= 2 and dep != arr:
                 data['route'] = f"{dep}->{arr}"
                 break
@@ -182,12 +186,13 @@ def categorize_invoice(destination, filename, full_text=''):
     """Categorize invoice type based on destination, filename, and full text"""
     text = (destination or '') + filename + (full_text or '')
 
-    # 火车票 - Train tickets (check first for specificity)
-    if any(keyword in text for keyword in ['火车', '铁路', '12306', '中国铁路', '动车', '高铁', '电子客票', '客票']):
-        return '火车票'
+    # 飞机票 - Flight tickets (check BEFORE train to avoid 电子客票 conflict)
+    if any(keyword in text for keyword in ['飞机', '航空', '机票', '航班', 'airline', 'flight', 'airways', '代订机票', '退改费用', '经济舱', '商务舱', '航空运输', '电子行程单', '国航', '南航', '东航', '自:', '至:']):
+        return '飞机票'
 
-    # 飞机票 - Flight tickets (check for specific keywords)
-    elif any(keyword in text for keyword in ['飞机', '航空', '机票', '航班', 'airline', 'flight', 'airways', '代订机票', '退改费用', '经济舱', '商务舱']):
+    # 火车票 - Train tickets
+    elif any(keyword in text for keyword in ['火车', '铁路', '12306', '中国铁路', '动车', '高铁', '电子客票', '客票']):
+        return '火车票'
         return '飞机票'
 
     # 住宿 - Accommodation (exclude if it's travel agency selling flights)

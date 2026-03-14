@@ -278,14 +278,18 @@ def create_excel(data, output_path):
             ws.cell(row=row, column=7, value=None)
         ws.cell(row=row, column=8, value=None)          # 项目名称
 
-    # 合计 row
+    # 合计 row — pre-calculated sum (works on mobile apps that don't evaluate formulas)
     total_row = len(data) + 2
     total_label = ws.cell(row=total_row, column=1, value="合计")
     total_label.font = Font(bold=True)
-    if len(data) > 0:
-        sum_cell = ws.cell(row=total_row, column=5,
-                           value=f"=SUM(E2:E{total_row - 1})")
-        sum_cell.font = Font(bold=True)
+    total_amount = 0
+    for invoice in data:
+        try:
+            total_amount += float(invoice['amount']) if invoice['amount'] else 0
+        except (ValueError, TypeError):
+            pass
+    sum_cell = ws.cell(row=total_row, column=5, value=round(total_amount, 2))
+    sum_cell.font = Font(bold=True)
 
     # Dropdown for 发票类型 (column F)
     dv = DataValidation(

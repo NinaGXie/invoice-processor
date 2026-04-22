@@ -179,6 +179,8 @@ def extract_invoice_data(text, filename):
 
     # Extract route for train/flight tickets (departure -> arrival)
     route_patterns = [
+        # Flight with A: and :B format on separate lines (OCR specific): A: 上海 浦东 T1 \n :北京 首都 T2
+        r'A[:：\s]*([\u4e00-\u9fa5]+)\s+([\u4e00-\u9fa5]+).*?\n\s*[:：]\s*([\u4e00-\u9fa5]+)\s+([\u4e00-\u9fa5]+)',
         # Flight itinerary: 自：上海 浦东 T1 至：北京 首都 T2 (OCR may have spaces/newlines)
         r'自[:：\s]*([\u4e00-\u9fa5]+)[\s\n]+([\u4e00-\u9fa5]+).*?至[:：\s]*([\u4e00-\u9fa5]+)[\s\n]+([\u4e00-\u9fa5]+)',
         # Flight itinerary simpler: 自:上海 虹桥 ... 至:北京 首都

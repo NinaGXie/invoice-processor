@@ -78,6 +78,12 @@ def extract_invoice_data(text, filename):
         'full_text': text  # Store full text for categorization
     }
 
+    # Debug: print OCR text for flight tickets
+    if '行程单' in filename or '飞机' in text:
+        print(f"\n=== DEBUG: OCR text for {filename} ===")
+        print(text[:500])  # Print first 500 chars
+        print("=== END DEBUG ===\n")
+
     # Extract amount (Chinese and English patterns)
     # Prioritize 价税合计 (tax-inclusive total)
     amount_patterns = [

@@ -180,13 +180,15 @@ def extract_invoice_data(text, filename):
         # Train ticket: 北京南 G27 苏州北
         r'([\u4e00-\u9fa5]{2,6})\s+[GDCKZTgdckzt]\d+\s+([\u4e00-\u9fa5]{2,6})\s*站',
         r'([\u4e00-\u9fa5]{2,6})\s+[GDCKZTgdckzt]\d+\s+([\u4e00-\u9fa5]{2,6})',
-        # Flight with arrow or dash: 上海浦东->北京首都 or 上海浦东-北京首都
-        r'([\u4e00-\u9fa5]{2,8})[-→>]\s*([\u4e00-\u9fa5]{2,8})',
         # Flight: 上海(SHA) 北京(PEK)
         r'([^\s（(]{2,6})[（(][A-Z]{3}[)）]\s+([^\s（(]{2,6})[（(][A-Z]{3}[)）]',
         # Generic: 上海 至 北京
         r'([\u4e00-\u9fa5]{2,6})\s*[至到]\s*([\u4e00-\u9fa5]{2,6})',
     ]
+
+    # Blacklist of terms that should not be in routes
+    route_blacklist = ['燃油', '附加', '保险', '税费', '合计', '金额', '票价']
+
     for pattern in route_patterns:
         match = re.search(pattern, text, re.DOTALL)
         if match:
@@ -197,6 +199,11 @@ def extract_invoice_data(text, filename):
             else:
                 dep = match.group(1).strip().replace(' ', '')
                 arr = match.group(2).strip().replace(' ', '')
+
+            # Check if route contains blacklisted terms
+            if any(term in dep or term in arr for term in route_blacklist):
+                continue
+
             if len(dep) >= 2 and len(arr) >= 2 and dep != arr:
                 data['route'] = f"{dep}->{arr}"
                 break

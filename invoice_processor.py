@@ -80,9 +80,11 @@ def extract_invoice_data(text, filename):
 
     # Debug: print OCR text for flight tickets
     if '行程单' in filename or '飞机' in text:
-        print(f"\n=== DEBUG: OCR text for {filename} ===")
-        print(text[:500])  # Print first 500 chars
-        print("=== END DEBUG ===\n")
+        print(f"\n{'='*60}")
+        print(f"DEBUG: OCR text for {filename}")
+        print(f"{'='*60}")
+        print(text)
+        print(f"{'='*60}\n")
 
     # Extract amount (Chinese and English patterns)
     # Prioritize 价税合计 (tax-inclusive total)
@@ -173,8 +175,8 @@ def extract_invoice_data(text, filename):
 
     # Extract route for train/flight tickets (departure -> arrival)
     route_patterns = [
-        # Flight itinerary: 自：上海 浦东 T1 至：北京 首都 T2 (OCR may have spaces)
-        r'自[:：]\s*([\u4e00-\u9fa5]+)\s+([\u4e00-\u9fa5]+)(?:\s+[T\d]+)?[^\n至]*至[:：]\s*([\u4e00-\u9fa5]+)\s+([\u4e00-\u9fa5]+)',
+        # Flight itinerary: 自：上海 浦东 T1 至：北京 首都 T2 (OCR may have spaces/newlines)
+        r'自[:：\s]*([\u4e00-\u9fa5]+)[\s\n]+([\u4e00-\u9fa5]+).*?至[:：\s]*([\u4e00-\u9fa5]+)[\s\n]+([\u4e00-\u9fa5]+)',
         # Flight itinerary simpler: 自:上海 虹桥 ... 至:北京 首都
         r'自[:：]\s*([\u4e00-\u9fa5]+\s*[\u4e00-\u9fa5]*)[^\n]*至[:：]\s*([\u4e00-\u9fa5]+\s*[\u4e00-\u9fa5]*)',
         # Train ticket: 北京南 G27 苏州北

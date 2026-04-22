@@ -1,5 +1,0 @@
-[phases.setup]
-aptPkgs = ["tesseract-ocr", "tesseract-ocr-chi-sim", "poppler-utils"]
-
-[phases.install]
-cmds = ["apt-get update", "apt-get install -y tesseract-ocr tesseract-ocr-chi-sim poppler-utils"]

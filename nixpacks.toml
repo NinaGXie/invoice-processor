@@ -1,0 +1,2 @@
+[phases.setup]
+aptPkgs = ["tesseract-ocr", "tesseract-ocr-chi-sim", "poppler-utils"]

@@ -105,15 +105,18 @@ def extract_invoice_data(text, filename):
                 break
 
     # Extract date (Chinese and English patterns)
+    # For train tickets, prioritize travel date over invoice issue date
     # For flight tickets, prioritize date in 备注 section (actual flight date)
     date_patterns = [
+        # Train ticket specific - travel date (e.g., 2026年03月27日 13:00开)
+        r'(\d{4}年\d{1,2}月\d{1,2}日)\s+\d{1,2}:\d{2}开',  # Travel date with departure time
         # Flight ticket specific - date in 备注 section (e.g., 携程订单:xxx,2026/1/22)
         r'订单[:\s]*\d+,(\d{4}[/-]\d{1,2}[/-]\d{1,2})',  # 订单号,日期 format
         r',(\d{4}[/-]\d{1,2}[/-]\d{1,2})\s+[\u4e00-\u9fa5]',  # ,日期 followed by Chinese characters
-        # Chinese patterns
-        r'(\d{4}年\d{1,2}月\d{1,2}日)',  # 2024年12月31日
-        r'(?:开票日期|日期|时间)[\s:：]*(\d{4}年\d{1,2}月\d{1,2}日)',
-        r'(?:开票日期|日期|时间)[\s:：]*(\d{4}[-/]\d{1,2}[-/]\d{1,2})',
+        # Chinese patterns - avoid 开票日期 to prevent matching invoice issue date
+        r'(?<!开票)(?:日期|时间)[\s:：]*(\d{4}年\d{1,2}月\d{1,2}日)',
+        r'(?<!开票)(?:日期|时间)[\s:：]*(\d{4}[-/]\d{1,2}[-/]\d{1,2})',
+        r'(\d{4}年\d{1,2}月\d{1,2}日)',  # Generic date format
         # English patterns
         r'(\d{4}[-/]\d{1,2}[-/]\d{1,2})',  # 2024-12-31
         r'(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})',  # 12/31/2024 or 12-31-2024
@@ -274,7 +277,13 @@ def create_excel(data, output_path):
             ws.cell(row=row, column=5, value=float(invoice['amount']) if invoice['amount'] else None)
         except (ValueError, TypeError):
             ws.cell(row=row, column=5, value=invoice['amount'])
-        ws.cell(row=row, column=6, value=None)          # 发票类型 (blank, dropdown)
+        # 发票类型 - auto-fill for specific categories
+        invoice_type = None
+        if category in ('火车票', '飞机票'):
+            invoice_type = '电子专用发票'
+        elif category == '打车':
+            invoice_type = '电子普通发票'
+        ws.cell(row=row, column=6, value=invoice_type)  # 发票类型
         # 事项: route for train/flight, otherwise blank
         route = invoice.get('route')
         if category in ('火车票', '飞机票') and route:

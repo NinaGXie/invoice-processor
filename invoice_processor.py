@@ -82,11 +82,12 @@ def extract_invoice_data(text, filename):
     # Prioritize 价税合计 (tax-inclusive total)
     amount_patterns = [
         # Flight itinerary 合计 (last CNY amount on the tax line)
-        r'CNY\s+(\d+(?:\.\d{2})?)\s*$',
+        r'CNY\s*[¥￥]?\s*(\d+(?:\.\d{2})?)\s*$',
+        r'CNY\s*[¥￥]?\s*(\d+(?:\.\d{2})?)',
         # Chinese patterns - prioritize 价税合计
         r'价税合计[\s:：]*[¥￥]?\s*(\d+(?:,\d{3})*(?:\.\d{2})?)',
         r'价税合计.*?[¥￥]?\s*(\d+(?:,\d{3})*(?:\.\d{2})?)',
-        r'(?:合计金额|总金额)[\s:：]*[¥￥]?\s*(\d+(?:,\d{3})*(?:\.\d{2})?)',
+        r'(?:合计金额|总金额|合计)[\s:：]*[¥￥]?\s*(\d+(?:,\d{3})*(?:\.\d{2})?)',
         r'(?:小写|金额)[\s:：]*[¥￥]?\s*(\d+(?:,\d{3})*(?:\.\d{2})?)',
         r'[¥￥]\s*(\d+(?:,\d{3})*(?:\.\d{2})?)',
         # English patterns
@@ -110,14 +111,15 @@ def extract_invoice_data(text, filename):
     date_patterns = [
         # Train ticket specific - travel date (e.g., 2026年03月27日 13:00开)
         r'(\d{4}年\d{1,2}月\d{1,2}日)\s+\d{1,2}:\d{2}开',  # Travel date with departure time
-        # Flight ticket specific - date in 备注 section (e.g., 携程订单:xxx,2026/1/22)
-        r'订单[:\s]*\d+,(\d{4}[/-]\d{1,2}[/-]\d{1,2})',  # 订单号,日期 format
-        r',(\d{4}[/-]\d{1,2}[/-]\d{1,2})\s+[\u4e00-\u9fa5]',  # ,日期 followed by Chinese characters
+        # Flight ticket specific - date in 备注 section (e.g., 携程订单:xxx,2026/1/22 or 2026.03.17)
+        r'订单[:\s]*\d+[,，]\s*(\d{4}[./-]\d{1,2}[./-]\d{1,2})',  # 订单号,日期 format with dot/slash/dash
+        r'[,，]\s*(\d{4}[./-]\d{1,2}[./-]\d{1,2})\s+[\u4e00-\u9fa5]',  # ,日期 followed by Chinese characters
         # Chinese patterns - avoid 开票日期 to prevent matching invoice issue date
         r'(?<!开票)(?:日期|时间)[\s:：]*(\d{4}年\d{1,2}月\d{1,2}日)',
-        r'(?<!开票)(?:日期|时间)[\s:：]*(\d{4}[-/]\d{1,2}[-/]\d{1,2})',
+        r'(?<!开票)(?:日期|时间)[\s:：]*(\d{4}[./-]\d{1,2}[./-]\d{1,2})',
         r'(\d{4}年\d{1,2}月\d{1,2}日)',  # Generic date format
-        # English patterns
+        # English and numeric patterns - support dots (2026.03.17)
+        r'(\d{4}[.]\d{1,2}[.]\d{1,2})',  # 2026.03.17
         r'(\d{4}[-/]\d{1,2}[-/]\d{1,2})',  # 2024-12-31
         r'(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})',  # 12/31/2024 or 12-31-2024
         r'((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4})',  # January 31, 2024
@@ -165,13 +167,15 @@ def extract_invoice_data(text, filename):
     route_patterns = [
         # Flight itinerary: 自:上海 虹桥 国航 CA1524 ... \n至:北京 首都
         r'自[:：]\s*([\u4e00-\u9fa5]+\s*[\u4e00-\u9fa5]*)[^\n]*\n至[:：]\s*([\u4e00-\u9fa5]+\s*[\u4e00-\u9fa5]*)',
+        # Flight with arrow or dash: 上海浦东->北京首都 or 上海浦东-北京首都
+        r'([\u4e00-\u9fa5]{2,8})[-→>]\s*([\u4e00-\u9fa5]{2,8})',
         # Train ticket: 北京南 G27 苏州北
         r'([\u4e00-\u9fa5]{2,6})\s+[GDCKZTgdckzt]\d+\s+([\u4e00-\u9fa5]{2,6})\s*站',
         r'([\u4e00-\u9fa5]{2,6})\s+[GDCKZTgdckzt]\d+\s+([\u4e00-\u9fa5]{2,6})',
         # Flight: 上海(SHA) 北京(PEK)
         r'([^\s（(]{2,6})[（(][A-Z]{3}[)）]\s+([^\s（(]{2,6})[（(][A-Z]{3}[)）]',
-        # Generic: 上海 -> 北京
-        r'([\u4e00-\u9fa5]{2,6})\s*[-→至到]\s*([\u4e00-\u9fa5]{2,6})',
+        # Generic: 上海 至 北京
+        r'([\u4e00-\u9fa5]{2,6})\s*[至到]\s*([\u4e00-\u9fa5]{2,6})',
     ]
     for pattern in route_patterns:
         match = re.search(pattern, text, re.DOTALL)
@@ -236,8 +240,8 @@ def extract_month_day(date_str):
     if match:
         return match.group(1), match.group(2)
 
-    # Try YYYY/M/D or YYYY-M-D format: 2026/1/22
-    match = re.search(r'\d{4}[-/](\d{1,2})[-/](\d{1,2})', date_str)
+    # Try YYYY/M/D or YYYY-M-D or YYYY.M.D format: 2026/1/22 or 2026.03.17
+    match = re.search(r'\d{4}[./-](\d{1,2})[./-](\d{1,2})', date_str)
     if match:
         return match.group(1), match.group(2)
 

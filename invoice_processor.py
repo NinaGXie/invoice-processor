@@ -117,12 +117,14 @@ def extract_invoice_data(text, filename):
     date_patterns = [
         # Train ticket specific - travel date (e.g., 2026年03月27日 13:00开)
         r'(\d{4}年\d{1,2}月\d{1,2}日)\s+\d{1,2}:\d{2}开',  # Travel date with departure time
+        # Flight ticket specific - date with 日期 label (e.g., 日期 2026.03.17)
+        r'日期[\s:：]*(\d{4}[./-]\d{1,2}[./-]\d{1,2})',  # 日期: 2026.03.17
         # Flight ticket specific - date in 备注 section (e.g., 携程订单:xxx,2026/1/22 or 2026.03.17)
         r'订单[:\s]*\d+[,，]\s*(\d{4}[./-]\d{1,2}[./-]\d{1,2})',  # 订单号,日期 format with dot/slash/dash
         r'[,，]\s*(\d{4}[./-]\d{1,2}[./-]\d{1,2})\s+[\u4e00-\u9fa5]',  # ,日期 followed by Chinese characters
         # Chinese patterns - avoid 开票日期 to prevent matching invoice issue date
-        r'(?<!开票)(?:日期|时间)[\s:：]*(\d{4}年\d{1,2}月\d{1,2}日)',
-        r'(?<!开票)(?:日期|时间)[\s:：]*(\d{4}[./-]\d{1,2}[./-]\d{1,2})',
+        r'(?<!开票)(?:时间)[\s:：]*(\d{4}年\d{1,2}月\d{1,2}日)',
+        r'(?<!开票)(?:时间)[\s:：]*(\d{4}[./-]\d{1,2}[./-]\d{1,2})',
         r'(\d{4}年\d{1,2}月\d{1,2}日)',  # Generic date format
         # English and numeric patterns - support dots (2026.03.17)
         r'(\d{4}[.]\d{1,2}[.]\d{1,2})',  # 2026.03.17
@@ -171,13 +173,15 @@ def extract_invoice_data(text, filename):
 
     # Extract route for train/flight tickets (departure -> arrival)
     route_patterns = [
-        # Flight itinerary: 自:上海 虹桥 国航 CA1524 ... \n至:北京 首都
-        r'自[:：]\s*([\u4e00-\u9fa5]+\s*[\u4e00-\u9fa5]*)[^\n]*\n至[:：]\s*([\u4e00-\u9fa5]+\s*[\u4e00-\u9fa5]*)',
-        # Flight with arrow or dash: 上海浦东->北京首都 or 上海浦东-北京首都
-        r'([\u4e00-\u9fa5]{2,8})[-→>]\s*([\u4e00-\u9fa5]{2,8})',
+        # Flight itinerary: 自：上海 浦东 T1 至：北京 首都 T2 (OCR may have spaces)
+        r'自[:：]\s*([\u4e00-\u9fa5]+)\s+([\u4e00-\u9fa5]+)(?:\s+[T\d]+)?[^\n至]*至[:：]\s*([\u4e00-\u9fa5]+)\s+([\u4e00-\u9fa5]+)',
+        # Flight itinerary simpler: 自:上海 虹桥 ... 至:北京 首都
+        r'自[:：]\s*([\u4e00-\u9fa5]+\s*[\u4e00-\u9fa5]*)[^\n]*至[:：]\s*([\u4e00-\u9fa5]+\s*[\u4e00-\u9fa5]*)',
         # Train ticket: 北京南 G27 苏州北
         r'([\u4e00-\u9fa5]{2,6})\s+[GDCKZTgdckzt]\d+\s+([\u4e00-\u9fa5]{2,6})\s*站',
         r'([\u4e00-\u9fa5]{2,6})\s+[GDCKZTgdckzt]\d+\s+([\u4e00-\u9fa5]{2,6})',
+        # Flight with arrow or dash: 上海浦东->北京首都 or 上海浦东-北京首都
+        r'([\u4e00-\u9fa5]{2,8})[-→>]\s*([\u4e00-\u9fa5]{2,8})',
         # Flight: 上海(SHA) 北京(PEK)
         r'([^\s（(]{2,6})[（(][A-Z]{3}[)）]\s+([^\s（(]{2,6})[（(][A-Z]{3}[)）]',
         # Generic: 上海 至 北京
@@ -186,8 +190,13 @@ def extract_invoice_data(text, filename):
     for pattern in route_patterns:
         match = re.search(pattern, text, re.DOTALL)
         if match:
-            dep = match.group(1).strip().replace(' ', '')
-            arr = match.group(2).strip().replace(' ', '')
+            # Handle the first pattern which captures 4 groups (city + airport for both)
+            if len(match.groups()) == 4:
+                dep = match.group(1).strip() + match.group(2).strip()
+                arr = match.group(3).strip() + match.group(4).strip()
+            else:
+                dep = match.group(1).strip().replace(' ', '')
+                arr = match.group(2).strip().replace(' ', '')
             if len(dep) >= 2 and len(arr) >= 2 and dep != arr:
                 data['route'] = f"{dep}->{arr}"
                 break
